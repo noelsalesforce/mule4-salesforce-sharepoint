@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:idp-idp-rental-agreement-110="http://www.mulesoft.org/schema/mule/idp-idp-rental-agreement-110" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce" xmlns:sharepoint="http://www.mulesoft.org/schema/mule/sharepoint" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/sharepoint http://www.mulesoft.org/schema/mule/sharepoint/current/mule-sharepoint.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/idp-idp-rental-agreement-110 http://www.mulesoft.org/schema/mule/idp-idp-rental-agreement-110/current/mule-idp-idp-rental-agreement-110.xsd">
+	<configuration-properties doc:name="Configuration properties" doc:id="28d41567-2f21-4467-9f21-926603a746e8" file="credentials.properties" />
+	<salesforce:sfdc-config name="Salesforce_Config_Manufacturing" doc:name="Salesforce Config" doc:id="393ef1a7-eae3-4522-94f2-3c069d7dbd83" >
+		<salesforce:basic-connection username="${sfdc.usernameManufacturing}" password="${sfdc.passwordManufacturing}" />
+	</salesforce:sfdc-config>
+	<sharepoint:sharepoint-online-config name="Sharepoint_Sharepoint_online" doc:name="Sharepoint Sharepoint online" doc:id="7a1f61b0-cb9f-494c-8eb7-847d7381dc51" >
+		<sharepoint:online-connection siteUrl="${sharepoint.siteUrl}" onlineUsername="${sharepoint.username}" onlinePassword="${sharepoint.password}" />
+	</sharepoint:sharepoint-online-config>
+	<idp-idp-rental-agreement-110:config name="IDP___IDP___Rental_Agreement___1_1_0_Config" doc:name="IDP - IDP - Rental Agreement - 1.1.0 Config" doc:id="8a5ac9b3-65d4-41bf-a0f8-2c1e735287d8" property_host="${idp.host}" property_port="${idp.port}" property_basePath="${idp.basePath}" property_protocol="${idp.protocol}" property_client-id="${idp.clientId}" property_client-secret="${idp.clientSecret}" />
+	<flow name="Flow-SalesforceTriggerToCreateFolder" doc:id="1f1c7495-2635-4794-b326-afe6c192b04a" >
+		<salesforce:modified-object-listener objectType="Opportunity" doc:name="Opportunity" doc:id="801425a6-4e8a-447e-a30c-b06ad300d61e" config-ref="Salesforce_Config_Manufacturing" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="100000"/>
+			</scheduling-strategy>
+		</salesforce:modified-object-listener>
+		<choice doc:name="Choice" doc:id="b0f4c69a-131f-4a9f-934f-6f9aaa9dd8ed" >
+			<when expression='#[payload.StageName == "Closed Won"]' >
+				<set-variable value="#[{&#10;    Id: payload.Id,&#10;    Name: payload.Name,&#10;    CloseDate: payload.CloseDate,&#10;    Amount: payload.Amount,&#10;    StageName: payload.StageName&#10;}]" doc:name="File Content" doc:id="195e978b-2eef-4de0-ac0f-3ead77225796" variableName="fileContent" />
+				<set-variable value='#["/Shared Documents/" ++ "SFOpportunity_" ++ vars.fileContent.Name as String ++ "_" ++ vars.fileContent.Id as String]' doc:name="Sharepoint Url" doc:id="61f334c6-b424-4719-ac48-e66e8f0d9692" variableName="sharepointUrl" />
+				<sharepoint:folder-create doc:name="Shared Documents" doc:id="55ff5fe5-9746-4b5a-b947-37fbf773d3be" config-ref="Sharepoint_Sharepoint_online" url="#[vars.sharepointUrl]" />
+				<sharepoint:file-add doc:name="File add" doc:id="06584e8f-466b-4069-8484-ad03af65e227" config-ref="Sharepoint_Sharepoint_online" fileServerRelativeUrl='#[vars.sharepointUrl ++ "/" ++ vars.fileContent.Id as String ++ ".csv"]' >
+					<sharepoint:file-content-stream ><![CDATA[#[%dw 2.0
+output application/csv
+---
+vars.fileContent]]]></sharepoint:file-content-stream>
+				</sharepoint:file-add>
+				<ee:transform doc:name="Result Response" doc:id="457f3a34-df84-4d4a-8e99-805ceb39af1d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+		</choice>
+	</flow>
+</mule>
